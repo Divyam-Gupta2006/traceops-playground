@@ -8,6 +8,30 @@ export const newTraceId = () => rid(16);
 export const newSpanId = () => rid(8);
 
 type Snap = { v: number; feed: FeedItem[]; stats: Stats; config: Config };
+export const BACKEND_PRESETS = [
+  {
+    id: "mock",
+    label: "Built-in Mock",
+    url: "/api/mock-ingest",
+    apiKey: "demo-key",
+    description: "In-memory test endpoint (/api/mock-ingest). Works out of the box without any external backend.",
+  },
+  {
+    id: "local",
+    label: "Localhost (8080)",
+    url: "http://localhost:8080/v1/ingest",
+    apiKey: "demo-key",
+    description: "Local TraceOps backend running on port 8080.",
+  },
+  {
+    id: "custom",
+    label: "Custom Remote Backend",
+    url: "",
+    apiKey: "",
+    description: "Custom deployed TraceOps instance (e.g. Render, Railway, AWS, Fly.io).",
+  },
+] as const;
+
 const DEFAULT: Config = { url: process.env.NEXT_PUBLIC_TRACEOPS_URL || "/api/mock-ingest", apiKey: process.env.NEXT_PUBLIC_TRACEOPS_API_KEY || "demo-key" };
 let config: Config = DEFAULT;
 let loaded = false;
@@ -50,6 +74,12 @@ export const traceops = {
     stats = { ...stats, backend: "unknown", key: "unknown" };
     emit();
   },
+  resetConfig() {
+    config = { ...DEFAULT };
+    try { localStorage.removeItem("traceops-config"); } catch {}
+    stats = { ...stats, backend: "unknown", key: "unknown" };
+    emit();
+  },
   clear() { feed = []; stats = { ...stats, sent: 0, acked: 0, failed: 0 }; emit(); },
 
   /** Record an event: shows in the feed immediately, then delivers with retry. */
@@ -74,6 +104,7 @@ export const traceops = {
     if (res.ok) stats = { ...stats, acked: stats.acked + 1, lastSuccess: Date.now(), backend: "up", key: "valid" };
     else stats = { ...stats, failed: stats.failed + 1, backend: res.status === 401 || res.status === 403 || res.status === 400 ? "up" : "down", key: res.status === 401 || res.status === 403 ? "invalid" : stats.key };
     emit();
+    return res;
   },
 
   /** Non-HTTP events: pageview, cart.add, auth.failed, ... */

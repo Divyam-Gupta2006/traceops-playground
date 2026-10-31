@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Activity, CheckCircle2, Flame, Play, Square, Zap, XCircle } from "lucide-react";
+import { Activity, CheckCircle2, Eye, EyeOff, Flame, Play, RotateCcw, Server, Square, Zap, XCircle } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { traceops, useTraceOps } from "@/lib/traceops-client";
+import { BACKEND_PRESETS, traceops, useTraceOps } from "@/lib/traceops-client";
 import { injector, SCENARIOS, useChaos } from "@/lib/failure-injector";
 import { ENDPOINTS, PRESETS, runIncident, runTraffic, stopTraffic, useContinuousTraffic, continuousTraffic } from "@/lib/traffic-generator";
 import type { Progress, TrafficConfig } from "@/types/simulator";
@@ -17,6 +17,8 @@ export default function ControlCenter() {
   const chaos = useChaos();
   const sim = useContinuousTraffic();
   const [trafficTab, setTrafficTab] = useState<"live" | "batch">("live");
+  const [showKey, setShowKey] = useState(false);
+  const [testingConn, setTestingConn] = useState(false);
   const [cfg, setCfg] = useState<TrafficConfig>(PRESETS.normal.cfg);
   const [prog, setProg] = useState<Progress>({ done: 0, total: 0, running: false });
   const [, tick] = useState(0);
@@ -36,12 +38,86 @@ export default function ControlCenter() {
     <div className="mx-auto grid max-w-7xl gap-4 p-4 lg:grid-cols-3">
       {/* Connection */}
       <section className={`${card} lg:col-span-1`}>
-        <h2 className="mb-3 flex items-center gap-2 font-semibold"><Activity className="h-4 w-4 text-acme" />TraceOps connection</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="flex items-center gap-2 font-semibold"><Activity className="h-4 w-4 text-acme" />TraceOps connection</h2>
+          <button
+            onClick={() => traceops.resetConfig()}
+            className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+            title="Reset to default mock settings"
+          >
+            <RotateCcw className="h-3 w-3" /> Reset
+          </button>
+        </div>
+
+        {/* Target Backend Presets */}
+        <div className="mb-3">
+          <label className="mb-1 block text-xs text-slate-400">Target backend preset:</label>
+          <div className="grid grid-cols-3 gap-1.5">
+            {BACKEND_PRESETS.map((p) => {
+              const active =
+                p.id === "mock" ? config.url === "/api/mock-ingest" :
+                p.id === "local" ? config.url === "http://localhost:8080/v1/ingest" :
+                config.url !== "/api/mock-ingest" && config.url !== "http://localhost:8080/v1/ingest";
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    if (p.id === "mock") traceops.setConfig({ url: "/api/mock-ingest", apiKey: "demo-key" });
+                    else if (p.id === "local") traceops.setConfig({ url: "http://localhost:8080/v1/ingest", apiKey: config.apiKey || "demo-key" });
+                  }}
+                  className={`rounded border px-2 py-1.5 text-left text-xs transition-colors ${
+                    active
+                      ? "border-acme bg-acme/15 font-semibold text-white"
+                      : "border-line bg-ink/40 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+                  }`}
+                >
+                  <div className="truncate">{p.label}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* URL Input */}
         <label className="text-xs text-slate-400">Ingestion URL</label>
-        <input className={`${input} mb-2 mono`} value={config.url} onChange={(e) => traceops.setConfig({ url: e.target.value })} placeholder="http://localhost:8080/v1/ingest" />
-        <label className="text-xs text-slate-400">API key</label>
-        <input className={`${input} mb-3 mono`} type="password" value={config.apiKey} onChange={(e) => traceops.setConfig({ apiKey: e.target.value })} />
-        <button onClick={() => traceops.test()} className="mb-3 w-full rounded-md bg-acme py-2 text-sm font-semibold">Send test event</button>
+        <input
+          className={`${input} mb-2 mono`}
+          value={config.url}
+          onChange={(e) => traceops.setConfig({ url: e.target.value.trim() })}
+          placeholder="http://localhost:8080/v1/ingest or https://your-backend/v1/ingest"
+        />
+
+        {/* API Key / Auth Token */}
+        <label className="text-xs text-slate-400">Auth Token / API Key</label>
+        <div className="relative mb-3">
+          <input
+            className={`${input} pr-8 mono`}
+            type={showKey ? "text" : "password"}
+            value={config.apiKey}
+            onChange={(e) => traceops.setConfig({ apiKey: e.target.value })}
+            placeholder="Enter auth token or API key"
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            className="absolute right-2 top-2 text-slate-400 hover:text-slate-200"
+            aria-label={showKey ? "Hide key" : "Show key"}
+          >
+            {showKey ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          </button>
+        </div>
+
+        <button
+          disabled={testingConn}
+          onClick={async () => {
+            setTestingConn(true);
+            try { await traceops.test(); } finally { setTestingConn(false); }
+          }}
+          className="mb-3 w-full rounded-md bg-acme py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50 transition-colors"
+        >
+          {testingConn ? "Testing connection…" : "Send test event"}
+        </button>
+
         <dl className="space-y-1.5 text-sm">
           <div className="flex justify-between"><dt>Backend</dt><dd><Dot c={backendTxt[1]} /> {backendTxt[0]}</dd></div>
           <div className="flex justify-between"><dt>API key</dt><dd><Dot c={keyTxt[1]} /> {keyTxt[0]}</dd></div>
@@ -50,7 +126,9 @@ export default function ControlCenter() {
           <div className="flex justify-between"><dt>Acknowledged</dt><dd className="mono text-ok">{stats.acked}</dd></div>
           <div className="flex justify-between"><dt>Failed deliveries</dt><dd className="mono text-bad">{stats.failed}</dd></div>
         </dl>
-        <p className="mt-3 text-xs text-slate-500">Default URL is a built-in mock, so everything works without a backend. Point it at your TraceOps ingestion endpoint to test for real. Open <span className="mono">/api/mock-ingest</span> to see what the mock stored.</p>
+        <p className="mt-3 text-xs text-slate-500">
+          Defaults to built-in mock. Point to your live backend by entering its URL and secret token above. Changes save automatically.
+        </p>
       </section>
 
       {/* Traffic generator */}
